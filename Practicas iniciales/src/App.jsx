@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Count } from './assets/components/Counter'
 import { ShowText } from './assets/components/ShowText'
 
-const ListTasks = ({ tasks, setTasks, handleModal, taskClassName, taskValueBtn,   }) => {
+const ListTasks = ({ tasks, setTasks, toggleModal, handleEditTask }) => {
 
   useEffect(() => {
     console.log(tasks); // Se ejecutará cada vez que 'tasks' cambie
@@ -16,36 +16,39 @@ const ListTasks = ({ tasks, setTasks, handleModal, taskClassName, taskValueBtn, 
     setTimeout(() => {
       const filteredTask = tasks.filter(task => task.id !== id)
       setTasks(filteredTask)
+      window.localStorage.setItem('tasks', JSON.stringify(filteredTask))
     }, 500);
   }
   const handleTaskCompletion = (id) => {
     const updateTask = tasks.map(task => id === task.id ?{...task, complete: !task.complete} : task)
     setTasks(updateTask)
+    window.localStorage.setItem('tasks', JSON.stringify(updateTask))
+  }
+
+  const getTaskClassName = (task)=> {
+    return `container-element ${task.complete ? 'completed' : 'incomplete'}`;
+  }
+  const getTaskButtonText = (task)=> {
+    return `${task.complete ? 'Desmarcar' : 'Completar'}`;
   }
 
   return (
     <div className='section-container'>
       <div className='container-content'>
         <h1>Lista de Tareas</h1>
-        <button className='btn-Agregar' onClick={handleModal}>Agregar tarea</button>
+        <button className='btn-Agregar' onClick={toggleModal}>Agregar tarea</button>
         <div className='container-elements'>
-          {
-            tasks.map(task => {
-              return (
-                <div className={`${taskClassName(task)} ${task.removing ? 'fade-out-shrink-height' : ''}` } id={task.id} key={task.id} >
-                  <div className='container-heders'>
-                    <h3>{task.name}</h3>
-                    <p>{task.description}</p>
-                  </div>
-                  <div>
-                    <button onClick={()=> handleTaskCompletion(task.id)}>{taskValueBtn(task)}</button>
-                    <button >Editar</button>
-                    <button onClick={()=> handleRemoveTask(task.id)}>Eliminar</button>
-                  </div>
-                </div>
-              )
-            })
-          }
+          {tasks.map(task => (
+            <TaskItem 
+              key={task.id}
+              task={task}
+              onTaskCompletion={handleTaskCompletion}
+              onRemoveTask={handleRemoveTask}
+              taskClassName={getTaskClassName(task)}
+              taskButtonText = {getTaskButtonText(task)}
+              onEditTask = {handleEditTask}
+          />
+          ))}
         </div>
 
 
@@ -54,19 +57,34 @@ const ListTasks = ({ tasks, setTasks, handleModal, taskClassName, taskValueBtn, 
   )
 }
 
-const Modal = ({showModal, inputValue, setInputValue, inputValueDes, setInputValueDes, handleAddTask, exitModal}) => {
+const TaskItem = ({task, onTaskCompletion, onRemoveTask, taskClassName, taskButtonText, onEditTask}) => (
+    <div className={`${taskClassName} ${task.removing ? 'fade-out-shrink-height' : ''}` } id={task.id} >
+      <div className='container-heders'>
+        <h3>{task.name}</h3>
+        <p>{task.description}</p>
+      </div>
+      <div>
+        <button onClick={()=> onTaskCompletion(task.id)}>{taskButtonText}</button>
+        <button onClick={()=> onEditTask(task.id)}>Editar</button>
+        <button onClick={()=> onRemoveTask(task.id)}>Eliminar</button>
+      </div>
+    </div>
+  )
+
+
+const Modal = ({showModal, taskName, setTaskName, taskDescription, setTaskDescription, handleAddTask, closeModal, isEditing}) => {
   if(!showModal) return null;
   return(
     <>
     <div className="modal">
       <div className='modal-content'>
-        <button className='btn-exit' onClick={exitModal}>X</button>
-          <h2>Nueva Tarea</h2>
+        <button className='btn-exit' onClick={closeModal}>X</button>
+          <h2>{isEditing ? 'Editar Tarea' : 'Nueva Tarea'}</h2>
           <div className='container-inputs'>
-            <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder='Escribe la tarea...' />
-            <textarea value={inputValueDes} onChange={(e) => setInputValueDes(e.target.value)} placeholder="Escribe la descripción..." rows={3}/>
+            <input type="text" value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder='Escribe la tarea...' />
+            <textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Escribe la descripción..." rows={3}/>
           </div>
-          <button onClick={handleAddTask}>Crear tarea</button>
+          <button onClick={handleAddTask}>{isEditing ? 'Guardar Cambios' : 'Crear tarea'}</button>
       </div>
     </div>
       
@@ -79,41 +97,65 @@ const Modal = ({showModal, inputValue, setInputValue, inputValueDes, setInputVal
 function App() {
   const [count, setCount] = useState(0);
   const [visible, setVisible] = useState(true);
-  const [tasks, setTasks] = useState([]);
-  const [inputValue, setInputValue] = useState('')
-  const [inputValueDes, setInputValueDes] = useState('')
+  const [tasks, setTasks] = useState(() => {
+    const tasksFromStorage = window.localStorage.getItem('tasks')
+    return tasksFromStorage ? JSON.parse(tasksFromStorage) : [] 
+  });
+  const [taskName, setTaskName] = useState('')
+  const [taskDescription, setTaskDescription] = useState('')
   const [showModal, setShowModal] = useState(false)
+
+  const [editingTaskId, setEditingTaskId] = useState(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   const className = `${visible ? 'visible' : 'hidden'} `
   const textContent = `${visible ? 'Ocultar texto' : 'Mostrar texto'}`
 
-  const getTaskClass = (task)=> {
-    return `container-element ${task.complete ? 'completed' : 'incomplete'}`;
+  const handleEditTask = (id) => {
+    const taskToEdit = tasks.find((task)=> task.id === id)
+    setTaskName(taskToEdit.name);
+    setTaskDescription(taskToEdit.description);
+    setEditingTaskId(id);
+    setIsEditing(true);
+    setShowModal(true);
   }
-  const getValueBtn = (task)=> {
-    return `${task.complete ? 'Desmarcar' : 'Completar'}`;
+
+  const handleAddOrUpdateTask= () =>{
+    if (taskName.trim() === '') return;
+    if (isEditing){
+      const updatedTasks = tasks.map((task)=> 
+        task.id === editingTaskId ? {...task, name: taskName, description: taskDescription} : task);
+      setTasks(updatedTasks)
+      window.localStorage.setItem('tasks', JSON.stringify(updatedTasks))
+    }else{
+      const newTask = {
+        id: Date.now(),
+        name: taskName,
+        description: taskDescription,
+        complete: false,
+      }
+      const updatedTask = [...tasks, newTask]
+      setTasks(updatedTask)
+      window.localStorage.setItem('tasks', JSON.stringify(updatedTask))
+    }
+    setTaskName('');
+    setTaskDescription('');
+    setEditingTaskId(null);
+    setIsEditing(false);
+    setShowModal(false);
   }
-  const handleModal = () => {
+
+  const toggleModal = () => {
+    setIsEditing(false)
     setShowModal(!showModal)
   }
 
-  const exitModal = ()=> {
-    setShowModal(false)
-    setInputValue('')
-    setInputValueDes('')
-  }
-
-  const handleAddTask = () => {
-    if (inputValue.trim() === '') return;
-    const newTask = {
-      id: Date.now(), //identificador unico
-      name: inputValue,
-      description: inputValueDes,
-      complete: false
-    }
-    const updateTask = [...tasks, newTask]
-    setTasks(updateTask)
-    exitModal()
+  const closeModal = ()=> {
+    setShowModal(false);
+    setTaskName('');
+    setTaskDescription('');
+    setEditingTaskId(null);
+    setIsEditing(false);
   }
   
   return (
@@ -128,18 +170,18 @@ function App() {
       <ListTasks 
         tasks={tasks} 
         setTasks={setTasks} 
-        handleModal={handleModal}
-        taskClassName={getTaskClass} 
-        taskValueBtn={getValueBtn}
+        toggleModal={toggleModal}
+        handleEditTask = {handleEditTask}
         />
       <Modal
         showModal={showModal}
-        inputValue={inputValue}
-        setInputValue={setInputValue}
-        inputValueDes={inputValueDes}
-        setInputValueDes={setInputValueDes}
-        handleAddTask={handleAddTask}
-        exitModal={exitModal}
+        taskName={taskName}
+        setTaskName={setTaskName}
+        taskDescription={taskDescription}
+        setTaskDescription={setTaskDescription}
+        handleAddTask={handleAddOrUpdateTask}
+        closeModal={closeModal}
+        isEditing={isEditing}
       />
     </>
   )
